@@ -47,5 +47,14 @@ class LetterRoutingTests(unittest.TestCase):
    with patch.object(bear.random,'choice',return_value=side):c.pet.play_letter('Проверка края')
    self.assertEqual(c.pet.side,side);self.assertEqual(c.pet.width(),300)
    self.assertEqual(c.pet.x(),geometry.left() if side=='left' else geometry.right()-299)
+ def test_panel_reopens_from_tray_after_minimizing_or_hiding(self):
+  c=self.control
+  for hidden in [False,True]:
+   c.showMinimized();app.processEvents();self.assertTrue(c.isMinimized())
+   if hidden:c.hide()
+   c.menu.actions()[0].trigger();app.processEvents()
+   self.assertTrue(c.isVisible());self.assertFalse(c.isMinimized())
+  c.hide();c.menu.actions()[0].trigger();app.processEvents();self.assertTrue(c.isVisible())
+  c.showMinimized();app.processEvents();c.pet.mouseDoubleClickEvent(None);app.processEvents()
+  self.assertTrue(c.isVisible());self.assertFalse(c.isMinimized())
 if __name__=='__main__':unittest.main()
-

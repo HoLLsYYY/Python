@@ -69,3 +69,12 @@ PASS: две полные сцены в Windows, 58,95 и 58,67 отрисовк
 PASS: 40 тестов, таймер записки — 22000 мс после раскрытия; раннее закрытие кнопкой сохранено.
 PASS: полный проход в Windows — 22,33 с вместе с плавным исчезновением 0,32 с; мишка 58,96 к/с, конверт 59,77 к/с.
 PASS: исправления букета из 5.2.2 сохранены; очистка всех 161 кадров не удаляет белую шерсть персонажа.
+
+PASS: GitHub Actions 40366111465 — 40 tests, compiled EXE, packaged smoke test, published bear-v5.2.3.
+PASS: real Windows HTTPS download and SHA256 verification of published EXE; packaged letter self-test passed.
+PASS: actual installed app updated to 5.2.3, boot marker and installer OK confirmed; keys, partner, identity, autostart and settings preserved.
+
+Версия 5.2.4 — восстановление панели.
+PASS: ошибка воспроизведена до исправления: действие меню трея показывало окно с сохранённым состоянием WindowMinimized.
+PASS: после исправления в Windows окно видимо, не свёрнуто и активно во всех четырёх случаях: свёрнуто, скрыто после сворачивания, просто скрыто, двойной щелчок по мишке.
+PASS: 41 тест; исправления цветов и 22 секунды чтения сохранены.

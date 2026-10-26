@@ -270,7 +270,7 @@ class Pet(QWidget):
             self.draw_exit(p,t-self.action_end())
     def contextMenuEvent(self,event):
         self.control.menu.exec(event.globalPos())
-    def mouseDoubleClickEvent(self,event):self.control.show();self.control.raise_()
+    def mouseDoubleClickEvent(self,event):self.control.open()
 
 class Control(QWidget):
     def __init__(self):
@@ -328,7 +328,7 @@ class Control(QWidget):
         except (ValueError,TypeError):
             partner=None;self.status.setText('Ключ партнёра неполный или неверный. Приём команд доступен.')
         self.net.connect_pair(self.own_code,partner)
-    def open(self):self.show();self.raise_();self.activateWindow()
+    def open(self):self.showNormal();self.raise_();self.activateWindow()
     def connect(self):
         partner=self.code.text().strip()
         if partner==self.own_code:
@@ -466,5 +466,4 @@ def main():
     sys.exit(app.exec())
 
 if __name__=='__main__':main()
-
 
