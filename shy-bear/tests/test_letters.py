@@ -65,11 +65,11 @@ class LetterVisualTests(unittest.TestCase):
  def test_close_hit_target_and_stopped_idle_timer(self):
   card=LetterCard('Письмо ♥',font);card.started=time.monotonic()-CARD_DURATION-1;card.tick();app.processEvents();card.repaint();app.processEvents()
   self.assertTrue(card.finished);self.assertFalse(card.timer.isActive());self.assertFalse(bool(card.windowFlags()&Qt.WindowTransparentForInput))
-  self.assertEqual(card.read_timer.interval(),10000);self.assertTrue(card.read_timer.isActive())
+  self.assertEqual(card.read_timer.interval(),22000);self.assertTrue(card.read_timer.isActive())
   point=card.note_transform.map(CLOSE_RECT.center());self.assertTrue(card.mask().contains(point.toPoint()));self.assertFalse(card.mask().contains(QPointF(10,10).toPoint()))
   closed=[];card.closed.connect(lambda item:closed.append(True));QTest.mouseClick(card,Qt.LeftButton,Qt.NoModifier,point.toPoint());QTest.qWait(450);app.processEvents();self.assertEqual(closed,[True])
  def test_read_button_and_expiry_close_the_note_gently(self):
-  self.assertEqual(READ_SECONDS,10)
+  self.assertEqual(READ_SECONDS,22)
   for by_button in [True,False]:
    card=LetterCard('Прочитать ♥',font);card.started=time.monotonic()-CARD_DURATION-1;card.tick();app.processEvents();card.repaint();closed=[];card.closed.connect(lambda item:closed.append(True))
    if by_button:
@@ -84,5 +84,4 @@ class LetterVisualTests(unittest.TestCase):
   dialog.send.click();send.assert_called_once_with('Я скучаю ♥');dialog.close()
 
 if __name__=='__main__':unittest.main()
-
 

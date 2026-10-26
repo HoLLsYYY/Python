@@ -15,7 +15,7 @@ PINK=QColor('#e887a1')
 VISIT_ACTION_DURATION=4.1
 HANDOFF_TIME=3.0
 CARD_DURATION=4.85
-READ_SECONDS=10.0
+READ_SECONDS=22.0
 DISMISS_DURATION=.32
 CARD_ANGLE=-20.0
 LETTER_WIDTH=82.0
@@ -316,4 +316,3 @@ class LetterComposer(QDialog):
         self.send.setEnabled(valid);self.preview.setEnabled(valid)
     def submit(self):
         if self.send_callback(validate_letter(self.editor.toPlainText())):self.accept()
-
