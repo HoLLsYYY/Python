@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 from PySide6.QtCore import QObject, Signal, QTimer
 from windows_http import request
 
-VERSION='5.0.0'
+VERSION='5.0.1'
 REPOSITORY='HoLLsYYY/Python'
 RELEASES_URL=f'https://api.github.com/repos/{REPOSITORY}/releases?per_page=30'
 MAX_EXE_BYTES=200*1024*1024
@@ -136,7 +136,11 @@ $incoming=$state.target+'.new'
 $replaced=$false
 $launched=$null
 try {
-    if ((Get-FileHash -LiteralPath $state.candidate -Algorithm SHA256).Hash.ToLower() -ne $state.sha256) { throw 'Checksum mismatch' }
+    $stream=[IO.File]::OpenRead($state.candidate)
+    $sha=[Security.Cryptography.SHA256]::Create()
+    try { $actual=[BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-','').ToLower() }
+    finally { $stream.Dispose(); $sha.Dispose() }
+    if ($actual -ne $state.sha256) { throw 'Checksum mismatch' }
     Wait-Process -Id $state.pid -Timeout 60 -ErrorAction SilentlyContinue
     if (Get-Process -Id $state.pid -ErrorAction SilentlyContinue) { throw 'Application is still running' }
     Copy-Item -LiteralPath $state.target -Destination $backup -Force
