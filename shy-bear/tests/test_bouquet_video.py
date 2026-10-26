@@ -5,7 +5,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'source'))
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QImage,QPainter
 from PySide6.QtCore import Qt
-from bouquet_timeline import BouquetAnimation,sample,DURATION,CLIP_DURATION,OFFER_DURATION
+from bouquet_timeline import BouquetAnimation,sample,DURATION,CLIP_DURATION,OFFER_DURATION,offer_pose
 app=QApplication.instance() or QApplication([])
 class BouquetVideoTests(unittest.TestCase):
  @classmethod
@@ -35,6 +35,33 @@ class BouquetVideoTests(unittest.TestCase):
     a=self.pixels(t-1e-6,side);b=self.pixels(t+1e-6,side)
     mean=sum(abs(x-y) for x,y in zip(a,b))/len(a)
     self.assertLess(mean,.15,(t,side,mean))
+ def test_only_flowers_and_wrapping_travel_with_the_gift(self):
+  image=self.animation.flowers.toImage()
+  # Former nose/fur above the petals, both hands, and detached torso pieces.
+  for x,y in [(174,80),(156,84),(134,99),(151,154),(213,154),(155,170),(204,174),(186,196)]:
+   self.assertEqual(image.pixelColor(x,y).alpha(),0,(x,y))
+  self.assertGreater(image.pixelColor(181,114).alpha(),250)
+  self.assertGreater(image.pixelColor(182,182).alpha(),250)
+ def test_muzzle_has_strokes_without_a_brown_fill_or_cheek_remnants(self):
+  image=self.animation.head.toImage()
+  for x,y in [(175,90),(185,90),(160,116),(200,116),(230,111)]:
+   color=image.pixelColor(x,y)
+   self.assertGreater(color.red(),230,(x,y,color.name()))
+   self.assertEqual(color.alpha(),255)
+  for x,y in [(180,82),(180,89),(171,94),(189,94)]:
+   self.assertLess(image.pixelColor(x,y).red(),150,(x,y))
+ def test_video_to_offer_blend_keeps_shared_body_opaque(self):
+  for dt in [.04,.12,.175,.23,.31]:
+   image=self.render(CLIP_DURATION+dt)
+   # A shared forehead point must not let the desktop shine through during a blend.
+   self.assertGreaterEqual(image.pixelColor(round(960*.36),365).alpha(),250,dt)
+ def test_gift_releases_after_hands_open_and_pose_is_continuous(self):
+  self.assertEqual(offer_pose(1.6)['drop'],0)
+  self.assertLess(offer_pose(1.6)['grip'],.32)
+  self.assertEqual(offer_pose(1.75)['grip'],0)
+  self.assertEqual(offer_pose(OFFER_DURATION)['scale'],1.25)
+  for local in [.4,1.35,1.5,1.6,1.75,2.75]:
+   a=self.pixels(CLIP_DURATION+local-1e-6);b=self.pixels(CLIP_DURATION+local+1e-6)
+   self.assertLess(sum(abs(x-y) for x,y in zip(a,b))/len(a),.15,local)
 if __name__=='__main__':unittest.main()
-
 
