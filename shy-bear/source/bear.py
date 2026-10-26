@@ -200,7 +200,10 @@ class Pet(QWidget):
         meta=self.motion_meta[name];index=min(meta['count']-1,int(max(0,min(1,phase))*meta['count']))
         w,h=meta['width'],meta['height']
         p.save()
-        if self.side=='left':p.translate(self.width(),0);p.scale(-1,1)
+        if self.side=='left' and name.startswith('heart'):
+            # This front-facing pose contains lettering: mirror its position, not its text.
+            x=self.width()-x-w
+        elif self.side=='left':p.translate(self.width(),0);p.scale(-1,1)
         p.drawPixmap(QRectF(x,70,w,h),self.motion[name],QRectF(0,index*h,w,h))
         p.restore()
     def draw_entry(self,p,t):

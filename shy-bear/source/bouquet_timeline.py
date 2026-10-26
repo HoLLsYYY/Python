@@ -1,181 +1,95 @@
-"""Seven sequential, deterministic stages for the bouquet visit."""
-import math,json,sys
-from pathlib import Path
+"""User-provided bouquet clip, transparent 60 fps frames, handover and nearest-edge exit."""
+import json,math
 from dataclasses import dataclass
 from PySide6.QtCore import QRectF,QPointF,Qt
-from PySide6.QtGui import QPixmap,QPainter,QPainterPath,QColor,QPen
+from PySide6.QtGui import QPixmap,QPainterPath,QColor,QPen
 
-
-def clamp(x):return max(0.,min(1.,x))
-def ease(x):x=clamp(x);return x*x*(3-2*x)
+def clamp(value):return max(0.,min(1.,value))
+def ease(value):value=clamp(value);return value*value*(3-2*value)
 def mix(a,b,u):return a+(b-a)*u
 
-def rotate(x,y,angle):
-    a=math.radians(angle);return x*math.cos(a)-y*math.sin(a),x*math.sin(a)+y*math.cos(a)
-
-_support=json.loads((Path(getattr(sys,'_MEIPASS',Path(__file__).resolve().parent.parent))/'assets'/'bouquet-support.json').read_text())
-
-def bottom(angle,sy=1):
-    index=(angle%360)*4;left=int(index);fraction=index-left
-    return mix(_support[left],_support[(left+1)%1440],fraction)*sy
-
+CLIP_DURATION=6.6
+OFFER_DURATION=2.8
+EXIT_DURATION=2.4
+DURATION=CLIP_DURATION+OFFER_DURATION+EXIT_DURATION
 @dataclass(frozen=True)
 class Stage:
     name:str
     start:float
     duration:float
-
-STAGES=(Stage('peeking',0,1.8),Stage('slip',1.8,.65),Stage('flip_hang',2.45,3.1),Stage('fall',5.55,1.25),Stage('get_up',6.8,1.65),Stage('offer',8.45,3.6),Stage('exit',12.05,2.6))
-DURATION=14.65
+STAGES=(Stage('video',0,CLIP_DURATION),Stage('offer',CLIP_DURATION,OFFER_DURATION),Stage('exit',CLIP_DURATION+OFFER_DURATION,EXIT_DURATION))
 
 def sample(t,width,height,anchor_fraction=.36):
     stage=next((s for s in STAGES if t<s.start+s.duration),STAGES[-1])
-    local=max(0,t-stage.start);u=clamp(local/stage.duration)
-    ax=width*anchor_fraction;floor=height-6
-    x,y,angle,sy=ax,112.,0.,1.
-    left,right=1.,1.;flower=0.;bare=1.;dust=0.;offer=0.;walk=0.
-    sx=1.
-    if stage.name=='peeking':
-        left=right=ease(local/.18)
-        if local<.65:
-            q=ease(local/.65);y=mix(-110,20,q);angle=180
-        elif local<.95:
-            q=(local-.65)/.3;y=20;angle=180+1.5*math.sin(q*2*math.pi)*math.sin(q*math.pi)
-        else:
-            q=ease((local-.95)/.85);y=mix(20,112,q);angle=mix(180,0,q)
-    elif stage.name=='slip':
-        if local<.1:angle=-4*math.sin(math.pi*local/.1)
-        else:
-            q=clamp((local-.1)/.55);left=1-ease(q/.25)
-            angle=22*(q/.68)**3 if q<.68 else 22+5*math.sin((q-.68)/.32*2*math.pi)*math.exp(-5*(q-.68)/.32)
-        dx,dy=rotate(-65,103,angle);x=ax+65+dx;y=9+dy
-    elif stage.name=='flip_hang':
-        left=0.;flower=ease((local-.1)/.35)
-        start_x,start_y=rotate(-65,103,22)
-        if local<.1:
-            angle=22-4*math.sin(math.pi*local/.1)
-            dx,dy=rotate(-65,103,angle);x=ax+65+dx;y=9+dy
-        elif local<.9:
-            q=ease((local-.1)/.8);x=mix(ax+65+start_x,ax,q);y=mix(9+start_y,145,q);angle=mix(22,180,q)
-        else:
-            q=(local-.9)/2.2;swing=11*math.sin(q*5*math.pi)*math.exp(-2.2*q)
-            dx,dy=rotate(-65,136,swing);x=ax+65+dx;y=9+dy;angle=180+swing
-    elif stage.name=='fall':
-        release=clamp((local-.12)/.18)
-        left=0.;right=1-ease(release);flower=1.;bare=1-ease(release)
-        if local<.12:
-            q=local/.12;y=145-3*math.sin(math.pi*q);angle=180-2*math.sin(math.pi*q)
-        elif local<=1.05:
-            q=clamp((local-.12)/.93);angle=mix(180,270,ease(q))
-            sy=1+.12*math.sin(math.pi*q)*math.sqrt(q);sx=1/math.sqrt(sy)
-            y=mix(145,floor-bottom(270),q**3)
-        else:
-            angle=270;impact=(local-1.05)/.2;sy=1-.13*math.sin(math.pi*impact);sx=1/math.sqrt(sy);y=floor-bottom(270,sy)
-    elif stage.name=='get_up':
-        left=right=0.;bare=0.;flower=1.
-        if local<.12:angle=270-3*math.sin(math.pi*local/.12)
-        else:angle=mix(270,360,ease((local-.12)/.83))
-        y=floor-bottom(angle)
-        if local>.95:
-            shake=(local-.95)/.7;amplitude=math.sin(math.pi*shake)
-            x+=2.2*math.sin(shake*10*math.pi)*amplitude;dust=clamp((local-.95)/.7)
-    elif stage.name=='offer':
-        left=right=0.;bare=0.;flower=1.;offer=local
-        env=min(ease(local/.3),ease((3.6-local)/.3))
-        x+=1.8*math.sin(local*2.8*math.pi)*env;angle=360+1.2*math.sin(local*2.8*math.pi)*env
-        y=floor-bottom(angle)
-    else:
-        left=right=0.;bare=0.;flower=0.;angle=360
-        walk=clamp((local-.35)/2.25)
-        target=-140 if anchor_fraction<.5 else width+140
-        x=mix(ax,target,ease(walk))
-        if local<.35:
-            wind=math.sin(math.pi*local/.35);x+=2*wind*(1 if anchor_fraction<.5 else -1);angle=360+2*wind
-        y=floor-bottom(angle)-1.2*math.sin(walk*12*math.pi)*math.sin(math.pi*walk)
-    return dict(stage=stage.name,local=local,u=u,x=round(x,4),y=round(y,4),angle=round(angle,4),sy=round(sy,5),sx=round(sx,5),stage_duration=stage.duration,left=left,right=right,flower=flower,bare=bare,dust=dust,offer=offer,walk=walk,anchor_x=ax,floor=floor)
-
+    local=max(0,t-stage.start);u=clamp(local/stage.duration);anchor=width*anchor_fraction
+    direction=-1 if anchor<width/2 else 1
+    x=anchor
+    if stage.name=='exit':
+        # Accelerate into a run; decelerating off screen would make the exit feel sticky.
+        progress=(u*u/(2*.16) if u<.16 else (u-.08))/(1-.08)
+        x=mix(anchor,-230 if direction<0 else width+230,clamp(progress))
+    return dict(stage=stage.name,local=local,u=u,x=x,anchor_x=anchor,floor=height-6,direction=direction)
 
 class BouquetAnimation:
-    def __init__(self,assets,motion,meta):
-        self.neutral=QPixmap(str(assets/'canonical-reference.png'))
-        self.flowers=QPixmap(str(assets/'bouquet.png'))
-        self.motion=motion;self.meta=meta
-        self.bare=self.neutral.copy();p=QPainter(self.bare)
-        p.setCompositionMode(QPainter.CompositionMode_Source);p.fillRect(QRectF(45,115,110,38),Qt.transparent)
-        p.setCompositionMode(QPainter.CompositionMode_SourceOver);p.setRenderHint(QPainter.Antialiasing)
-        torso=QPainterPath(QPointF(80,110));torso.quadTo(73,128,75,153);torso.lineTo(126,153);torso.quadTo(128,128,120,110);torso.closeSubpath()
-        p.fillPath(torso,QColor('#fffefe'))
-        pen=QPen(QColor('#48251f'),4.2,Qt.SolidLine,Qt.RoundCap,Qt.RoundJoin);p.setPen(pen)
-        side=QPainterPath(QPointF(80,114));side.quadTo(73,131,75,151);p.drawPath(side)
-        side=QPainterPath(QPointF(120,114));side.quadTo(128,131,126,151);p.drawPath(side);p.end()
-        self.head=self.neutral.copy(0,0,200,116)
-        self.body_neutral=self.neutral.copy();self.body_bare=self.bare.copy()
-        for layer in [self.body_neutral,self.body_bare]:
-            painter=QPainter(layer);painter.setCompositionMode(QPainter.CompositionMode_Clear);painter.fillRect(QRectF(0,0,200,110),Qt.transparent);painter.end()
-    def frame(self,name,phase):
-        m=self.meta[name];i=min(m['count']-1,int(clamp(phase)*m['count']))
-        return self.motion[name].copy(0,i*m['height'],m['width'],m['height'])
-    def flower(self,p,x,y,scale=1,angle=0,opacity=1):
-        p.save();p.setOpacity(p.opacity()*opacity);p.translate(round(x,4),round(y,4));p.rotate(round(angle,4)%360);p.scale(scale,scale)
-        p.drawPixmap(QRectF(-34,-83,68,86),self.flowers,QRectF(self.flowers.rect()));p.restore()
+    def __init__(self,assets,motion=None,meta=None):
+        self.meta=json.loads((assets/'bouquet-video.json').read_text(encoding='utf-8'))
+        self.pages=[QPixmap(str(assets/name)) for name in self.meta['pages']]
+        self.head=QPixmap(str(assets/'bouquet-video-head.png'))
+        self.flowers=QPixmap(str(assets/'bouquet-video-gift.png'))
+        assert all(not page.isNull() for page in self.pages) and not self.head.isNull() and not self.flowers.isNull()
+        self.outline=QColor('#3e1a11');self.white=QColor('#f3f9fb')
+    def frame_rect(self,index):
+        index=max(0,min(self.meta['count']-1,index));page,cell=divmod(index,self.meta['per_page'])
+        return page,QRectF((cell%self.meta['columns'])*384,(cell//self.meta['columns'])*216,384,216)
+    def clip(self,p,t,anchor,floor,opacity=1):
+        index=min(self.meta['count']-1,max(0,int(t*60)))
+        page,rect=self.frame_rect(index);ground=self.meta['ground'][index]
+        p.save();p.setOpacity(p.opacity()*opacity)
+        p.drawPixmap(QRectF(anchor-180,floor-ground,384,216),self.pages[page],rect);p.restore()
+    def path(self,p,shape):
+        p.setPen(QPen(self.outline,3.5,Qt.SolidLine,Qt.RoundCap,Qt.RoundJoin));p.setBrush(self.white);p.drawPath(shape)
+    def rig(self,p,phase=0,running=False,direction=-1,amount=1):
+        p.save()
+        if direction>0 and running:phase=-phase
+        bob=1.8*math.sin(phase*2)*amount if running else 0
+        # Arms sit behind the torso. Short rigid feet swing around covered hip joints.
+        for left in [True,False]:
+            x=149 if left else 216
+            p.save();p.translate(x,137);p.rotate((8*math.sin(phase+(0 if left else math.pi))*amount) if running else 0)
+            arm=QPainterPath(QPointF(0,0));arm.cubicTo(-9 if left else 9,7,-12 if left else 12,20,-4 if left else 4,27);arm.quadTo(3 if left else -3,28,5 if left else -5,16);arm.closeSubpath();self.path(p,arm);p.restore()
+        for left in [True,False]:
+            q=phase+(0 if left else math.pi);lift=5*max(0,math.sin(q))*amount if running else 0
+            shift=3.5*math.cos(q)*amount if running else 0;x=148 if left else 184
+            p.save();p.translate(x+shift,176-lift);p.rotate(4*math.cos(q)*amount if running else 0)
+            foot=QPainterPath(QPointF(0,4));foot.lineTo(0,22);foot.cubicTo(0,31,8,31,15,30);foot.cubicTo(23,32,30,29,30,23);foot.lineTo(30,4);foot.cubicTo(30,-6,0,-6,0,4);foot.closeSubpath();self.path(p,foot)
+            p.setPen(QPen(self.outline,1.8,Qt.SolidLine,Qt.RoundCap));p.drawLine(QPointF(11,26),QPointF(11,30));p.drawLine(QPointF(21,26),QPointF(21,30));p.restore()
+        p.save();p.translate(0,bob)
+        torso=QPainterPath(QPointF(158,122));torso.cubicTo(147,133,145,153,147,179);torso.cubicTo(154,184,163,184,180,183);torso.cubicTo(197,184,207,184,216,179);torso.cubicTo(220,152,217,133,205,122);torso.closeSubpath()
+        # Open side contours merge into the feet, without a horizontal hip seam.
+        p.fillPath(torso,self.white);p.setPen(QPen(self.outline,3.5,Qt.SolidLine,Qt.RoundCap,Qt.RoundJoin))
+        sides=QPainterPath(QPointF(158,122));sides.cubicTo(147,133,145,153,147,179);sides.moveTo(205,122);sides.cubicTo(217,133,220,152,216,179);p.drawPath(sides)
+        bridge=QPainterPath(QPointF(176,180));bridge.lineTo(186,180);bridge.lineTo(186,189);bridge.lineTo(184,189);bridge.lineTo(184,187);bridge.cubicTo(184,183,178,183,178,187);bridge.lineTo(178,189);bridge.lineTo(176,189);bridge.closeSubpath();p.fillPath(bridge,self.white)
+        arch=QPainterPath(QPointF(178,189));arch.lineTo(178,187);arch.cubicTo(178,183,184,183,184,187);arch.lineTo(184,189);p.drawPath(arch)
+        p.save();p.translate(180+(direction*3*amount if running else 0),126);p.rotate(direction*5*amount if running else .65*math.sin(phase)*amount);p.translate(-180,-126)
+        p.drawPixmap(0,0,self.head)
+        p.restore();p.restore();p.restore()
     def paint(self,p,t,width,height,anchor_fraction):
-        s=sample(t,width,height,anchor_fraction);ax=s['anchor_x']
-        velocity=(sample(t+.005,width,height,anchor_fraction)['angle']-sample(max(0,t-.005),width,height,anchor_fraction)['angle'])/.01
-        envelope=min(ease(s['local']/.14),ease((s['stage_duration']-s['local'])/.14))
-        head_lag=max(-2.8,min(2.8,-velocity*.009))*envelope
-        if s['stage']=='get_up' or s['stage']=='fall' and s['local']>=.9:head_lag=0
-        head_lag=round(head_lag,4)
-        held_angle=-25+4*math.sin(t*5)-max(-16,min(16,velocity*.04))*envelope
-        # The hands are fixed to the monitor edge; the body hangs beneath them.
-        def body_point(px,py):
-            dx,dy=rotate(px-100,py-95,s['angle']);return QPointF(s['x']+dx*s['sx'],s['y']+dy*s['sy'])
-        wrist_y=9.;wrists={}
-        for side,amount in [('left',s['left']),('right',s['right'])]:
-            if amount<=0:continue
-            shoulder=body_point(74 if side=='left' else 126,123)
-            wrist=QPointF(ax+(-65 if side=='left' else 65),wrist_y)
-            if s['stage']=='fall' or s['stage']=='slip' and side=='left':
-                q=ease((s['local']-(.12 if s['stage']=='fall' else .1))/(.18 if s['stage']=='fall' else .1375));wrist=QPointF(mix(wrist.x(),shoulder.x(),q),mix(wrist.y(),shoulder.y(),q))
-            wrists[side]=wrist
-            p.save();p.setOpacity(amount);path=QPainterPath(shoulder)
-            path.quadTo(wrist.x()+max(-8,min(8,velocity*.025))*envelope,shoulder.y()-18,wrist.x(),wrist.y())
-            p.setPen(QPen(QColor('#48251f'),16,Qt.SolidLine,Qt.RoundCap));p.drawPath(path)
-            p.setPen(QPen(QColor('#fffefe'),10,Qt.SolidLine,Qt.RoundCap));p.drawPath(path);p.restore()
-        p.save();p.translate(s['x'],s['y']);p.scale(s['sx'],s['sy']);p.rotate(s['angle']%360)
-        if s['stage']=='exit':
-            if anchor_fraction>=.5 and s['local']<.35:image=self.frame('turn-right',s['local']/.35)
-            else:image=self.frame('return-walk' if anchor_fraction>=.5 else 'walk',s['walk'])
-            p.drawPixmap(QPointF(-100,-95),image)
-        else:
-            p.save()
-            if s['stage']=='offer':p.shear(round(.015*math.sin(s['local']*2.8*math.pi)*min(ease(s['local']/.3),ease((3.6-s['local'])/.3)),6),0)
-            p.drawPixmap(QPointF(-100,-95),self.body_bare if s['bare']>0 else self.body_neutral)
-            if 0<s['bare']<1:p.save();p.setOpacity(1-s['bare']);p.drawPixmap(QPointF(-100,-95),self.body_neutral);p.restore()
-            p.restore()
-            p.save();p.translate(0,15);p.rotate(head_lag);p.translate(0,-15);p.drawPixmap(QPointF(-100,-95),self.head);p.restore()
-        p.restore()
-        if s['flower']>0 and s['stage']!='offer':
-            hand=body_point(61,148);flower_angle=s['angle']+held_angle
-            offsets=[rotate(cx,cy,flower_angle)[1] for cx in (-34,34) for cy in (-83,3)]
-            hand.setY(hand.y()-max(0,hand.y()+max(offsets)-s['floor']))
-            self.flower(p,hand.x(),hand.y(),opacity=s['flower'],angle=flower_angle)
-            p.save();p.setOpacity(s['flower']);p.setPen(QPen(QColor('#48251f'),2.5));p.setBrush(QColor('#fffefe'));p.drawEllipse(QPointF(hand.x(),hand.y()-2),8,7);p.restore()
-        # Gripping paws sit in front of the body and remain on the edge.
-        for side,amount in [('left',s['left']),('right',s['right'])]:
-            if amount<=0:continue
-            p.save();p.setOpacity(amount);p.setPen(QPen(QColor('#48251f'),3.5));p.setBrush(QColor('#fffefe'))
-            p.drawEllipse(wrists[side],12,8);p.restore()
-        if s['stage']=='get_up' and s['local']>=.95:
-            q=s['dust']
-            for i in range(8):
-                direction=-1 if i%2==0 else 1;speed=22+(i//2)*12
-                px=s['x']+direction*(24+speed*q);py=s['floor']-14-(25+i*3)*q+30*q*q
-                p.save();p.setOpacity((1-q)*.6);p.setPen(Qt.NoPen);p.setBrush(QColor('#d1c9ce'));p.drawEllipse(QPointF(px,py),2+i%3,2+i%3);p.restore()
+        s=sample(t,width,height,anchor_fraction);floor=s['floor'];anchor=s['anchor_x']
+        if s['stage']=='video':
+            self.clip(p,t,anchor,floor);return s
+        local=s['local']
         if s['stage']=='offer':
-            local=s['offer'];reach=ease((local-.65)/1.2);lower=ease((local-1.95)/1.25)
-            scale=mix(1,2,reach);fx=s['x']+mix(-39,0,reach);fy=s['y']+mix(53,61,reach)+lower*260
-            self.flower(p,fx,fy,scale,held_angle*(1-reach))
-            if lower<.05:
-                p.save();p.setPen(QPen(QColor('#48251f'),2.5));p.setBrush(QColor('#fffefe'));p.drawEllipse(QPointF(fx,fy-3),8,7);p.restore()
+            blend=ease(local/.35)
+            if blend<1:self.clip(p,CLIP_DURATION,anchor,floor,1-blend)
+            p.save();p.setOpacity(blend);p.translate(anchor-180,floor-207)
+            self.rig(p,local*3,amount=ease(local/.25)*ease((OFFER_DURATION-local)/.25))
+            reach=ease((local-.4)/1.1);drop=ease((local-1.5)/1.15)
+            # Original video bouquet and hands follow one continuous rigid trajectory.
+            p.translate(182,145+drop*260);p.scale(1+.55*reach,1+.55*reach);p.translate(-182,-145)
+            p.drawPixmap(0,0,self.flowers);p.restore()
+        else:
+            p.save();p.translate(s['x']-180,floor-207)
+            self.rig(p,local*2*math.pi*3.2,running=True,direction=s['direction'],amount=ease(local/.28));p.restore()
         return s
+
 

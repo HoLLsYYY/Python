@@ -5,7 +5,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'source'))
 from updater import select_release,verify_candidate,version_tuple,child_environment,Updater
 
 class ReleaseTests(unittest.TestCase):
- def release(self,version='5.1.0'):
+ def release(self,version='5.2.0'):
   raw=b'MZtest app'
   return {'tag_name':'bear-v'+version,'assets':[{'name':'Bear.exe','state':'uploaded','size':len(raw),'digest':'sha256:'+hashlib.sha256(raw).hexdigest(),'browser_download_url':f'https://github.com/HoLLsYYY/Python/releases/download/bear-v{version}/Bear.exe'}]}
  def test_newest_semantic_version(self):
@@ -42,4 +42,5 @@ class ReleaseTests(unittest.TestCase):
    with self.assertRaises(ValueError):version_tuple(v)
 
 if __name__=='__main__':unittest.main()
+
 

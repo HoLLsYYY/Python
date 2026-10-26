@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 from PySide6.QtCore import QObject, Signal, QTimer
 from windows_http import request
 
-VERSION='5.0.1'
+VERSION='5.1.0'
 REPOSITORY='HoLLsYYY/Python'
 RELEASES_URL=f'https://api.github.com/repos/{REPOSITORY}/releases?per_page=30'
 MAX_EXE_BYTES=200*1024*1024
@@ -169,4 +169,5 @@ try {
     Start-Process -FilePath $state.target -ArgumentList '--background' -WindowStyle Hidden
 }
 '''
+
 
