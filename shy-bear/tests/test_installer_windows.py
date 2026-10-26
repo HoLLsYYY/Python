@@ -1,5 +1,5 @@
 """Exercise the actual Windows installer using tiny disposable stand-in executables."""
-import hashlib,json,os,subprocess,sys,tempfile,unittest
+import hashlib,json,os,subprocess,sys,tempfile,time,unittest
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'source'))
 from updater import INSTALL_SCRIPT
@@ -26,6 +26,14 @@ class WindowsInstallerTests(unittest.TestCase):
     self.assertEqual(result.returncode,0,(result.stdout,result.stderr))
     if label=='success':self.assertTrue(marker.exists());self.assertEqual(text.strip(),'OK')
     else:self.assertIn('did not start',text);self.assertEqual(hashlib.sha256(target.read_bytes()).hexdigest(),old_hash)
+    # Start-Process returns before the tiny restored process has necessarily exited.
+    for attempt in range(100):
+     try:
+      with target.open('r+b'):pass
+      break
+     except PermissionError:
+      if attempt==99:raise
+      time.sleep(.1)
 
 if __name__=='__main__':unittest.main()
 
