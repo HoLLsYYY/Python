@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 from PySide6.QtCore import QObject, Signal, QTimer
 from windows_http import request
 
-VERSION='5.1.1'
+VERSION='5.2.0'
 REPOSITORY='HoLLsYYY/Python'
 RELEASES_URL=f'https://api.github.com/repos/{REPOSITORY}/releases?per_page=30'
 MAX_EXE_BYTES=200*1024*1024
@@ -103,9 +103,11 @@ class Updater(QObject):
             self.status.emit('Обновление отложено: '+str(error))
         finally:self.finished.emit()
     def prepared(self,release):
-        self.pending=release;self.status.emit('Обновление готово. Установлю после анимации…')
+        self.pending=release;self.status.emit('Обновление готово. Дождусь окончания анимации и закрытия писем…')
     def try_install(self):
         if not self.pending or self.control.pet.active:return
+        if (getattr(self.control,'letter_cards',[]) or getattr(self.control,'letter_composer',None) is not None
+            or getattr(self.control,'letter_draft','') or getattr(self.control,'pending',{}) or getattr(self.control,'pending_kinds',{})):return
         if not self.manual and not self.control.updates.isChecked():return
         try:
             self.control.save()
@@ -169,6 +171,7 @@ try {
     Start-Process -FilePath $state.target -ArgumentList '--background' -WindowStyle Hidden
 }
 '''
+
 
 
 

@@ -62,8 +62,9 @@ jobs:
         run: |
           gh release view $env:BEAR_TAG *> $null
           if ($LASTEXITCODE -eq 0) { Write-Output 'This version is already published'; exit 0 }
-          gh release create $env:BEAR_TAG release/Bear.exe release/Bear-Windows.zip release/SHA256.txt --draft --target $env:GITHUB_SHA --title "Мишка $env:BEAR_TAG" --notes 'Автоматическое обновление мишки. Постоянный ключ и настройки сохраняются. Для первого перехода с v4 замените Bear.exe один раз.'
+          gh release create $env:BEAR_TAG release/Bear.exe release/Bear-Windows.zip release/SHA256.txt --draft --target $env:GITHUB_SHA --title "Мишка $env:BEAR_TAG" --notes-file RELEASE_NOTES.md
           if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
           gh release edit $env:BEAR_TAG --draft=false --latest
           if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }
+
 

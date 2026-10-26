@@ -1,11 +1,12 @@
 import copy,hashlib,sys,tempfile,unittest
+from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import Mock,patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'source'))
 from updater import select_release,verify_candidate,version_tuple,child_environment,Updater
 
 class ReleaseTests(unittest.TestCase):
- def release(self,version='5.2.0'):
+ def release(self,version='5.3.0'):
   raw=b'MZtest app'
   return {'tag_name':'bear-v'+version,'assets':[{'name':'Bear.exe','state':'uploaded','size':len(raw),'digest':'sha256:'+hashlib.sha256(raw).hexdigest(),'browser_download_url':f'https://github.com/HoLLsYYY/Python/releases/download/bear-v{version}/Bear.exe'}]}
  def test_newest_semantic_version(self):
@@ -37,10 +38,18 @@ class ReleaseTests(unittest.TestCase):
    Updater.try_install(fake);install.assert_not_called()
  def test_child_runtime_is_independent(self):
   self.assertEqual(child_environment()['PYINSTALLER_RESET_ENVIRONMENT'],'1')
+ def test_install_waits_for_reading_drafts_and_delivery(self):
+  control=SimpleNamespace(pet=SimpleNamespace(active=False),letter_cards=[],letter_composer=None,letter_draft='',pending={},pending_kinds={},updates=Mock())
+  fake=SimpleNamespace(pending={'version':'next'},control=control,manual=False)
+  for name,value in [('letter_cards',[object()]),('letter_composer',object()),('letter_draft','Не потерять текст'),('pending',{'id':True}),('pending_kinds',{'id':'letter'})]:
+   original=getattr(control,name);setattr(control,name,value)
+   with patch('updater.launch_installer') as install:Updater.try_install(fake);install.assert_not_called()
+   setattr(control,name,original)
  def test_invalid_versions_rejected(self):
   for v in ['../9','5.1','5.0.1-beta',None]:
    with self.assertRaises(ValueError):version_tuple(v)
 
 if __name__=='__main__':unittest.main()
+
 
 

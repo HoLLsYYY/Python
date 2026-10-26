@@ -6,10 +6,11 @@ from urllib.parse import urlencode
 from windows_http import request as windows_request
 from bouquet_timeline import BouquetAnimation,DURATION as BOUQUET_DURATION
 from updater import Updater,VERSION
+from letter_scene import LetterPose,LetterCard,LetterComposer,VISIT_ACTION_DURATION,HANDOFF_TIME,HANDOFF_WIDTH,HANDOFF_Y
 from PySide6.QtCore import Qt,QTimer,QObject,Signal,QRectF,QPointF
 from PySide6.QtGui import QPixmap,QImage,QPainter,QColor,QFont,QFontDatabase,QIcon,QAction,QFontMetrics
 from PySide6.QtWidgets import QApplication,QWidget,QVBoxLayout,QLabel,QPushButton,QLineEdit,QComboBox,QCheckBox,QSystemTrayIcon,QMenu,QMessageBox
-from protocol import new_code,key_for,topic_for,encode,decode
+from protocol import new_code,key_for,topic_for,encode,decode,validate_letter
 
 BASE=Path(getattr(sys,'_MEIPASS',Path(__file__).resolve().parent.parent))
 ASSETS=BASE/'assets'
@@ -24,6 +25,7 @@ class Network(QObject):
     received=Signal(dict)
     status=Signal(str)
     sent=Signal(str)
+    failed=Signal(str,str)
     diagnostics=Signal(str)
     def __init__(self):
         super().__init__();self.generation=0;self.code=None;self.outgoing_code=None;self.seen=set();self.use_windows=os.name=='nt';self.device_id=uuid.uuid4().hex
@@ -132,10 +134,10 @@ class Network(QObject):
             except OSError:pass
             self.diagnostics.emit(report)
         threading.Thread(target=run,daemon=True).start()
-    def send(self,command,ref=None,target=None,channel=None):
+    def send(self,command,ref=None,target=None,channel=None,text=None):
         code=channel or self.outgoing_code or self.code
         if not code:return
-        payload,ident=encode(code,command,ref,sender=self.device_id,target=target,reply_to=self.code)
+        payload,ident=encode(code,command,ref,sender=self.device_id,target=target,reply_to=self.code,text=text)
         def run():
             try:
                 if self.use_windows:self.system_request('POST',RELAY+topic_for(code),payload)
@@ -150,7 +152,9 @@ class Network(QObject):
                 if command!='ack':self.sent.emit(ident)
             except Exception as error:
                 self.status.emit(f'Не удалось отправить: {self.error_reason(error)}')
+                self.failed.emit(ident,self.error_reason(error))
         threading.Thread(target=run,daemon=True).start()
+        return ident
 
 def ease(t):
     t=max(0,min(1,t));return t*t*(3-2*t)
@@ -164,6 +168,7 @@ class Pet(QWidget):
         self.motion_meta=json.loads((ASSETS/'motion.json').read_text(encoding='utf-8'))
         self.motion={name:QPixmap(str(ASSETS/f'{name}-motion.png')) for name in self.motion_meta}
         self.bouquet=BouquetAnimation(ASSETS,self.motion,self.motion_meta)
+        self.letter_pose=LetterPose(ASSETS);self.letter_text='';self.letter_handed=True
         self.active=False;self.action='shy';self.started=0;self.side='right'
         self.timer=QTimer(self);self.timer.setTimerType(Qt.PreciseTimer);self.timer.setSingleShot(True);self.timer.timeout.connect(self.tick);self.next_frame=0
         self.rare=QTimer(self);self.rare.setSingleShot(True);self.rare.timeout.connect(self.random_visit);self.schedule()
@@ -172,7 +177,9 @@ class Pet(QWidget):
         if self.control.auto.isChecked() and not self.active:self.play(random.choice(['heart','shy','bouquet']))
         self.schedule()
     def play(self,action):
+        if self.active and self.action=='letter' and not self.letter_handed:self.handoff_letter()
         self.action='shy' if action=='show' else action;self.started=time.monotonic();self.active=True
+        if self.action=='letter':self.letter_handed=False
         self.side=random.choice(['left','right'])
         self.next_frame=self.started;self.timer.start(0)
         screen=QApplication.primaryScreen();g=screen.geometry();a=screen.availableGeometry()
@@ -183,17 +190,29 @@ class Pet(QWidget):
             self.setFixedSize(300,265)
             self.move(g.left() if self.side=='left' else g.right()-self.width()+1,a.bottom()-self.height()+1)
         self.show();self.raise_();self.update()
-    def vanish(self):self.active=False;self.timer.stop();self.hide()
+    def play_letter(self,text):
+        if self.active and self.action=='letter' and not self.letter_handed:self.handoff_letter()
+        self.letter_text=validate_letter(text);self.play('letter')
+    def handoff_letter(self):
+        if self.letter_handed:return
+        self.letter_handed=True
+        x=40 if self.side=='left' else 60
+        origin=self.mapToGlobal(QPointF(x+100,70+HANDOFF_Y))
+        self.control.present_letter(self.letter_text,origin,HANDOFF_WIDTH)
+    def vanish(self):
+        if self.active and self.action=='letter' and not self.letter_handed:self.handoff_letter()
+        self.active=False;self.timer.stop();self.hide()
     def tick(self):
         if not self.active:return
         now=time.monotonic()
+        if self.action=='letter' and now-self.started>=ACTION_START+HANDOFF_TIME:self.handoff_letter()
         if now-self.started>=(BOUQUET_DURATION if self.action=='bouquet' else self.action_end()+EXIT_DURATION):self.vanish();return
         self.update()
         if self.next_frame<now-.1:self.next_frame=now
         self.next_frame+=1/60
         self.timer.start(max(1,round((self.next_frame-time.monotonic())*1000)))
     def action_end(self):
-        return ACTION_START+(SHY_DURATION if self.action=='shy' else 7.1)
+        return ACTION_START+(VISIT_ACTION_DURATION if self.action=='letter' else SHY_DURATION if self.action=='shy' else 7.1)
     def draw_shy(self,p,elapsed):
         self.draw_motion(p,'shy',max(0,min(1,elapsed/SHY_DURATION)),60)
     def draw_motion(self,p,name,phase,x):
@@ -232,7 +251,8 @@ class Pet(QWidget):
             self.bouquet.paint(p,t,self.width(),self.height(),.36 if self.side=='left' else .64);return
         if t<ACTION_START:self.draw_entry(p,t)
         elif t<self.action_end():
-            if self.action=='shy':self.draw_shy(p,t-ACTION_START)
+            if self.action=='letter':self.letter_pose.paint(p,t-ACTION_START,40 if self.side=='left' else 60,70)
+            elif self.action=='shy':self.draw_shy(p,t-ACTION_START)
             else:self.draw_heart(p,t-ACTION_START)
             if self.action=='shy':
                 elapsed=t-ACTION_START;p.setOpacity(min(ease(elapsed/.15),ease((SHY_DURATION-elapsed)/.15)))
@@ -287,15 +307,17 @@ class Control(QWidget):
         self.updates.toggled.connect(lambda _:self.save())
         self.update_status=QLabel('Версия '+VERSION);self.update_status.setWordWrap(True);layout.addWidget(self.update_status)
         self.check_updates=QPushButton('Проверить обновления');layout.addWidget(self.check_updates)
-        for label,cmd in [('Отправить букет','bouquet'),('Отправить сердечко','heart'),('Отправить «я скучаю»','shy'),('Попросить выглянуть','show'),('Скрыть мишку у партнёра','hide')]:
+        for label,cmd in [('Написать письмо','letter'),('Отправить букет','bouquet'),('Отправить сердечко','heart'),('Отправить «я скучаю»','shy'),('Попросить выглянуть','show'),('Скрыть мишку у партнёра','hide')]:
             b=QPushButton(label);b.clicked.connect(lambda checked=False,c=cmd:self.command(c));layout.addWidget(b)
         self.status=QLabel('Локальные анимации доступны без интернета');self.status.setWordWrap(True);layout.addWidget(self.status)
-        self.net.status.connect(self.status.setText);self.net.sent.connect(self.sent)
+        self.net.status.connect(self.status.setText);self.net.sent.connect(self.sent);self.net.failed.connect(self.send_failed)
+        self.letter_cards=[];self.incoming_letters=[];self.letter_composer=None;self.pending_kinds={};self.letter_draft='';self.outgoing_letters={}
         self.pet=Pet(self);self.menu=QMenu()
-        for label,fn in [('Показать панель',self.open),('Сердечко',lambda:self.pet.play('heart')),('Я скучаю',lambda:self.pet.play('shy')),('Букет',lambda:self.pet.play('bouquet')),('Скрыть мишку',self.pet.vanish),('Закрыть приложение',QApplication.quit)]:
+        for label,fn in [('Показать панель',self.open),('Написать письмо',self.compose_letter),('Сердечко',lambda:self.pet.play('heart')),('Я скучаю',lambda:self.pet.play('shy')),('Букет',lambda:self.pet.play('bouquet')),('Скрыть мишку',self.pet.vanish),('Закрыть приложение',QApplication.quit)]:
             self.menu.addAction(label,fn)
         self.tray=QSystemTrayIcon(QIcon(str(ASSETS/'heart0.png')),self);self.tray.setToolTip('Мишка — двойной щелчок открывает панель');self.tray.setContextMenu(self.menu);self.tray.activated.connect(lambda reason:self.open() if reason==QSystemTrayIcon.DoubleClick else None);self.tray.show()
         self.pending={};self.acked=set()
+        self.letter_queue_timer=QTimer(self);self.letter_queue_timer.timeout.connect(self.next_letter);self.letter_queue_timer.start(250)
         self.auto.setChecked(self.cfg.get('auto',True));self.auto.toggled.connect(lambda _:self.save())
         self.save()
         partner=self.code.text().strip() or None
@@ -331,9 +353,38 @@ class Control(QWidget):
         temporary.write_text(json.dumps({'own_key':self.own_code,'partner_key':self.code.text().strip(),'machine_id':self.machine_id,'device_id':self.net.device_id,'auto':self.auto.isChecked(),'autostart':self.startup.isChecked(),'updates':self.updates.isChecked()}),encoding='utf-8')
         temporary.replace(CONFIG)
     def command(self,cmd):
+        if cmd=='letter':self.compose_letter();return
         if self.net.outgoing_code:
-            self.status.setText('Отправляю…');self.net.send(cmd)
+            self.status.setText('Отправляю…');ident=self.net.send(cmd);self.pending_kinds[ident]=cmd;self.check_message_update()
         else:self.status.setText('Вставь ключ ПК партнёра и нажми «Подключить партнёра»')
+    def check_message_update(self):
+        updater=getattr(self,'updater',None)
+        if updater is not None:updater.check()
+    def compose_letter(self):
+        if self.letter_composer is not None:
+            self.letter_composer.show();self.letter_composer.raise_();return
+        self.letter_composer=LetterComposer(self.pixel_font,self.send_letter,self)
+        dialog=self.letter_composer;dialog.editor.setPlainText(self.letter_draft)
+        dialog.editor.textChanged.connect(lambda:setattr(self,'letter_draft',dialog.editor.toPlainText()))
+        self.letter_composer.preview_requested.connect(self.queue_letter)
+        self.letter_composer.finished.connect(lambda _:setattr(self,'letter_composer',None));self.letter_composer.show()
+    def send_letter(self,text):
+        if not self.net.outgoing_code:
+            QMessageBox.information(self,'Письмо','Сначала вставь ключ партнёра и нажми «Подключить партнёра». Текст останется в окне письма.');return False
+        text=validate_letter(text);ident=self.net.send('letter',text=text)
+        self.pending_kinds[ident]='letter';self.outgoing_letters[ident]=text;self.letter_draft=text;self.status.setText('Отправляю письмо…');self.check_message_update();return True
+    def send_failed(self,ident,reason):
+        self.pending.pop(ident,None);kind=self.pending_kinds.pop(ident,None);self.outgoing_letters.pop(ident,None)
+        if kind=='letter':self.status.setText('Письмо не отправлено: '+reason+'. Текст остался в окне «Написать письмо».')
+    def queue_letter(self,text):
+        text=validate_letter(text)
+        if self.pet.active:self.incoming_letters.append(text)
+        else:self.pet.play_letter(text)
+    def next_letter(self):
+        if self.incoming_letters and not self.pet.active:self.pet.play_letter(self.incoming_letters.pop(0))
+    def present_letter(self,text,origin=None,width=HANDOFF_WIDTH):
+        card=LetterCard(text,self.pixel_font,origin,width);self.letter_cards.append(card)
+        card.closed.connect(lambda item:self.letter_cards.remove(item) if item in self.letter_cards else None)
     def play_local(self,cmd):
         if cmd=='hide':self.pet.vanish()
         else:self.pet.play(cmd)
@@ -342,13 +393,21 @@ class Control(QWidget):
         self.pending[ident]=True;self.status.setText('Отправлено, жду подтверждение от мишки…')
         QTimer.singleShot(12000,lambda:self.timeout(ident))
     def timeout(self,ident):
-        if self.pending.pop(ident,None):self.status.setText('Подтверждение не пришло: проверьте ПК с мишкой и код')
+        if self.pending.pop(ident,None):
+            kind=self.pending_kinds.pop(ident,None)
+            self.outgoing_letters.pop(ident,None)
+            self.status.setText('Письмо отправлено, но подтверждение не пришло. Проверь связь и обновление на втором ПК.' if kind=='letter' else 'Подтверждение не пришло: проверьте ПК с мишкой и код')
     def receive(self,data):
         if data['cmd']=='ack':
             self.acked.add(data.get('ref'))
-            self.pending.pop(data.get('ref'),None);self.status.setText('Мишка получил команду ✓')
+            self.pending.pop(data.get('ref'),None);kind=self.pending_kinds.pop(data.get('ref'),None)
+            text=self.outgoing_letters.pop(data.get('ref'),None)
+            if text is not None and self.letter_draft==text:self.letter_draft=''
+            self.status.setText('Письмо доставлено ♥' if kind=='letter' else 'Мишка получил команду ✓')
         else:
-            self.play_local(data['cmd'])
+            self.check_message_update()
+            if data['cmd']=='letter':self.queue_letter(data['text'])
+            else:self.play_local(data['cmd'])
             reply=data.get('reply_to')
             if reply:
                 try:key_for(reply)
@@ -376,11 +435,14 @@ def main():
         assert all(not image.isNull() for image in window.pet.motion.values())
         assert window.pixel_font.family()!='Consolas'
         assert not window.pet.bouquet.flowers.isNull()
+        assert not window.pet.letter_pose.body.isNull() and not window.pet.letter_pose.head.isNull()
+        letter_key=new_code();letter_payload,_=encode(letter_key,'letter',text='Я рядом ♥')
+        assert decode(letter_key,letter_payload,set())['text']=='Я рядом ♥'
         window.pet.play('shy');window.pet.started=time.monotonic()-6;app.processEvents()
         assert not window.pet.grab().isNull()
         payload,_=encode(new_code(),'heart')
         report=Path(sys.argv[sys.argv.index('--self-test')+1])
-        report.write_text(json.dumps({'ok':True,'assets':len(window.pet.images),'font':window.pixel_font.family(),'frozen':bool(getattr(sys,'frozen',False))}),encoding='utf-8')
+        report.write_text(json.dumps({'ok':True,'assets':len(window.pet.images),'font':window.pixel_font.family(),'letter':True,'frozen':bool(getattr(sys,'frozen',False))}),encoding='utf-8')
         return
     from PySide6.QtNetwork import QLocalServer,QLocalSocket
     socket=QLocalSocket();socket.connectToServer('ShyBear.desktop.v1')
