@@ -4,7 +4,7 @@ os.environ['QT_QPA_PLATFORM']='offscreen'
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'source'))
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QImage,QPainter
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt,QPointF
 from bouquet_timeline import BouquetAnimation,sample,DURATION,CLIP_DURATION,OFFER_DURATION,offer_pose
 app=QApplication.instance() or QApplication([])
 class BouquetVideoTests(unittest.TestCase):
@@ -63,5 +63,18 @@ class BouquetVideoTests(unittest.TestCase):
   for local in [.4,1.35,1.5,1.6,1.75,2.75]:
    a=self.pixels(CLIP_DURATION+local-1e-6);b=self.pixels(CLIP_DURATION+local+1e-6)
    self.assertLess(sum(abs(x-y) for x,y in zip(a,b))/len(a),.15,local)
+ def test_floor_reflection_never_flashes_during_fall_or_getting_up(self):
+  for index,(boundary,transform) in self.animation.floor_frames.items():
+   frame=QImage(384,216,QImage.Format_RGBA8888);frame.fill(Qt.transparent)
+   p=QPainter(frame);self.animation.clip(p,index/60,180,self.animation.meta['ground'][index]);p.end()
+   for point in [QPointF(313,200),QPointF(315,205),QPointF(328,201)]:
+    q=transform.map(point);x,y=round(q.x()),round(q.y())
+    if 0<=x<384 and 0<=y<216:self.assertEqual(frame.pixelColor(x,y).alpha(),0,(index,x,y))
+ def test_lower_leaf_remains_visible_instead_of_following_the_floor_matte(self):
+  for index in range(150,255):
+   frame=QImage(384,216,QImage.Format_RGBA8888);frame.fill(Qt.transparent)
+   p=QPainter(frame);self.animation.clip(p,index/60,180,self.animation.meta['ground'][index]);p.end()
+   transform=self.animation.floor_frames[index][1];q=transform.map(QPointF(311,192))
+   self.assertGreater(frame.pixelColor(round(q.x()),round(q.y())).alpha(),225,index)
 if __name__=='__main__':unittest.main()
 

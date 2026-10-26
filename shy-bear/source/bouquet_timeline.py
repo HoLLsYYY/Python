@@ -2,7 +2,7 @@
 import json,math
 from dataclasses import dataclass
 from PySide6.QtCore import QRectF,QPointF,Qt
-from PySide6.QtGui import QPixmap,QPainter,QPainterPath,QColor,QPen
+from PySide6.QtGui import QPixmap,QPainter,QPainterPath,QColor,QPen,QTransform,QLinearGradient
 
 def clamp(value):return max(0.,min(1.,value))
 def ease(value):value=clamp(value);return value*value*(3-2*value)
@@ -102,6 +102,19 @@ class BouquetAnimation:
         self.pages=[QPixmap(str(assets/name)) for name in self.meta['pages']]
         self.head=clean_head(QPixmap(str(assets/'bouquet-video-head.png')))
         self.flowers=clean_flowers(QPixmap(str(assets/'bouquet-video-gift.png')))
+        cleanup=json.loads((assets/'bouquet-floor-motion.json').read_text(encoding='utf-8'))
+        self.floor_frames={}
+        reflection=QPainterPath(QPointF(269,197))
+        for point in [(294,198),(309,198),(309,195),(318,194),(317,191),
+                      (328,193),(336,190),(341,185),(700,185),(700,700),(269,700)]:
+            reflection.lineTo(*point)
+        reflection.closeSubpath()
+        whole=QPainterPath();whole.addRect(QRectF(0,0,384,216))
+        for i in range((len(cleanup['matrices'])-1)*2+1):
+            n,u=divmod(i,2);a=cleanup['matrices'][n];b=cleanup['matrices'][min(n+1,len(cleanup['matrices'])-1)]
+            m=[[mix(a[r][c],b[r][c],u/2) for c in range(3)] for r in range(2)]
+            transform=QTransform(m[0][0],m[1][0],m[0][1],m[1][1],m[0][2],m[1][2])
+            self.floor_frames[cleanup['first_frame']+i]=(whole.subtracted(transform.map(reflection)),transform)
         assert all(not page.isNull() for page in self.pages) and not self.head.isNull() and not self.flowers.isNull()
         self.outline=QColor('#3e1a11');self.white=QColor('#f3f9fb')
     def frame_rect(self,index):
@@ -111,7 +124,17 @@ class BouquetAnimation:
         index=min(self.meta['count']-1,max(0,int(t*60)))
         page,rect=self.frame_rect(index);ground=self.meta['ground'][index]
         p.save();p.setOpacity(p.opacity()*opacity)
-        p.drawPixmap(QRectF(anchor-180,floor-ground,384,216),self.pages[page],rect);p.restore()
+        p.translate(anchor-180,floor-ground)
+        if index in self.floor_frames:
+            boundary,transform=self.floor_frames[index]
+            p.setClipPath(boundary,Qt.IntersectClip)
+            # Restore the lower leaf lost to the floor matte, with one rigid silhouette.
+            p.save();p.setTransform(transform,True)
+            leaf=QPainterPath(QPointF(297,183));leaf.cubicTo(304,186,311,190,318,193)
+            leaf.quadTo(314,197,308,194);leaf.quadTo(302,189,297,183)
+            shade=QLinearGradient(299,183,315,195);shade.setColorAt(0,QColor('#82954e'));shade.setColorAt(1,QColor('#637b42'))
+            p.setPen(QPen(QColor('#4e6036'),1));p.setBrush(shade);p.drawPath(leaf);p.restore()
+        p.drawPixmap(QRectF(0,0,384,216),self.pages[page],rect);p.restore()
     def path(self,p,shape):
         p.setPen(QPen(self.outline,3.5,Qt.SolidLine,Qt.RoundCap,Qt.RoundJoin));p.setBrush(self.white);p.drawPath(shape)
     def rig(self,p,phase=0,running=False,direction=-1,amount=1):
