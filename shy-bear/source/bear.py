@@ -6,6 +6,7 @@ from urllib.parse import urlencode
 from windows_http import request as windows_request
 from bouquet_timeline import BouquetAnimation,DURATION as BOUQUET_DURATION
 from updater import Updater,VERSION
+from love_heart import LoveHeart,DURATION as LOVE_DURATION
 from letter_scene import LetterPose,LetterCard,LetterComposer,VISIT_ACTION_DURATION,HANDOFF_TIME,HANDOFF_WIDTH,HANDOFF_Y
 from PySide6.QtCore import Qt,QTimer,QObject,Signal,QRectF,QPointF
 from PySide6.QtGui import QPixmap,QImage,QPainter,QColor,QFont,QFontDatabase,QIcon,QAction,QFontMetrics
@@ -168,6 +169,7 @@ class Pet(QWidget):
         self.motion_meta=json.loads((ASSETS/'motion.json').read_text(encoding='utf-8'))
         self.motion={name:QPixmap(str(ASSETS/f'{name}-motion.png')) for name in self.motion_meta}
         self.bouquet=BouquetAnimation(ASSETS,self.motion,self.motion_meta)
+        self.love_heart=LoveHeart(control.pixel_font)
         self.letter_pose=LetterPose(ASSETS);self.letter_text='';self.letter_handed=True
         self.active=False;self.action='shy';self.started=0;self.side='right'
         self.timer=QTimer(self);self.timer.setTimerType(Qt.PreciseTimer);self.timer.setSingleShot(True);self.timer.timeout.connect(self.tick);self.next_frame=0
@@ -183,9 +185,11 @@ class Pet(QWidget):
         self.side=random.choice(['left','right'])
         self.next_frame=self.started;self.timer.start(0)
         screen=QApplication.primaryScreen();g=screen.geometry();a=screen.availableGeometry()
-        self.setWindowFlag(Qt.WindowTransparentForInput,self.action=='bouquet')
+        self.setWindowFlag(Qt.WindowTransparentForInput,self.action in ('bouquet','love'))
         if self.action=='bouquet':
             self.setFixedSize(g.width(),a.bottom()-g.top()+1);self.move(g.left(),g.top())
+        elif self.action=='love':
+            self.setFixedSize(340,335);self.move(a.center().x()-170,a.center().y()-167)
         else:
             self.setFixedSize(300,265)
             self.move(g.left() if self.side=='left' else g.right()-self.width()+1,a.bottom()-self.height()+1)
@@ -206,7 +210,7 @@ class Pet(QWidget):
         if not self.active:return
         now=time.monotonic()
         if self.action=='letter' and now-self.started>=ACTION_START+HANDOFF_TIME:self.handoff_letter()
-        if now-self.started>=(BOUQUET_DURATION if self.action=='bouquet' else self.action_end()+EXIT_DURATION):self.vanish();return
+        if now-self.started>=(LOVE_DURATION if self.action=='love' else BOUQUET_DURATION if self.action=='bouquet' else self.action_end()+EXIT_DURATION):self.vanish();return
         self.update()
         if self.next_frame<now-.1:self.next_frame=now
         self.next_frame+=1/60
@@ -247,6 +251,8 @@ class Pet(QWidget):
     def paintEvent(self,event):
         if not self.active:return
         t=time.monotonic()-self.started;p=QPainter(self);p.setRenderHint(QPainter.Antialiasing);p.setRenderHint(QPainter.SmoothPixmapTransform)
+        if self.action=='love':
+            self.love_heart.paint(p,t,self.width(),self.height());return
         if self.action=='bouquet':
             self.bouquet.paint(p,t,self.width(),self.height(),.36 if self.side=='left' else .64);return
         if t<ACTION_START:self.draw_entry(p,t)
@@ -307,13 +313,13 @@ class Control(QWidget):
         self.updates.toggled.connect(lambda _:self.save())
         self.update_status=QLabel('Версия '+VERSION);self.update_status.setWordWrap(True);layout.addWidget(self.update_status)
         self.check_updates=QPushButton('Проверить обновления');layout.addWidget(self.check_updates)
-        for label,cmd in [('Написать письмо','letter'),('Отправить букет','bouquet'),('Отправить сердечко','heart'),('Отправить «я скучаю»','shy'),('Попросить выглянуть','show'),('Скрыть мишку у партнёра','hide')]:
+        for label,cmd in [('Напомнить о любви · 3D-сердце','love'),('Написать письмо','letter'),('Отправить букет','bouquet'),('Отправить сердечко','heart'),('Отправить «я скучаю»','shy'),('Попросить выглянуть','show'),('Скрыть мишку у партнёра','hide')]:
             b=QPushButton(label);b.clicked.connect(lambda checked=False,c=cmd:self.command(c));layout.addWidget(b)
         self.status=QLabel('Локальные анимации доступны без интернета');self.status.setWordWrap(True);layout.addWidget(self.status)
         self.net.status.connect(self.status.setText);self.net.sent.connect(self.sent);self.net.failed.connect(self.send_failed)
         self.letter_cards=[];self.incoming_letters=[];self.letter_composer=None;self.pending_kinds={};self.letter_draft='';self.outgoing_letters={}
         self.pet=Pet(self);self.menu=QMenu()
-        for label,fn in [('Показать панель',self.open),('Написать письмо',self.compose_letter),('Сердечко',lambda:self.pet.play('heart')),('Я скучаю',lambda:self.pet.play('shy')),('Букет',lambda:self.pet.play('bouquet')),('Скрыть мишку',self.pet.vanish),('Закрыть приложение',QApplication.quit)]:
+        for label,fn in [('Показать панель',self.open),('Написать письмо',self.compose_letter),('3D-сердце · посмотреть',lambda:self.pet.play('love')),('Сердечко',lambda:self.pet.play('heart')),('Я скучаю',lambda:self.pet.play('shy')),('Букет',lambda:self.pet.play('bouquet')),('Скрыть мишку',self.pet.vanish),('Закрыть приложение',QApplication.quit)]:
             self.menu.addAction(label,fn)
         self.tray=QSystemTrayIcon(QIcon(str(ASSETS/'heart0.png')),self);self.tray.setToolTip('Мишка — двойной щелчок открывает панель');self.tray.setContextMenu(self.menu);self.tray.activated.connect(lambda reason:self.open() if reason==QSystemTrayIcon.DoubleClick else None);self.tray.show()
         self.pending={};self.acked=set()

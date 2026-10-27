@@ -2,7 +2,7 @@
 import base64, hashlib, json, secrets, time, unicodedata
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-COMMANDS={'heart','shy','bouquet','letter','show','hide','ack'}
+COMMANDS={'love','heart','shy','bouquet','letter','show','hide','ack'}
 LETTER_LIMIT=200
 
 def canonical_letter(text):
@@ -46,4 +46,3 @@ def decode(code,payload,seen,now=None):
     if data['id'] in seen: raise ValueError('Replay')
     seen.add(data['id'])
     return data
-

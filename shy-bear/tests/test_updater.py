@@ -23,7 +23,7 @@ class ReleaseTests(unittest.TestCase):
  def test_duplicate_asset_rejected(self):
   a=self.release();a['assets'].append(copy.deepcopy(a['assets'][0]));self.assertIsNone(select_release([a]))
  def test_integrity_and_partial_download(self):
-  info=select_release([self.release()])
+  info=select_release([self.release()],current='5.0.0')
   with tempfile.TemporaryDirectory() as d:
    p=Path(d)/'Bear.exe';p.write_bytes(b'MZtest app');verify_candidate(p,info)
    p.write_bytes(b'MZtest bad')
@@ -50,6 +50,5 @@ class ReleaseTests(unittest.TestCase):
    with self.assertRaises(ValueError):version_tuple(v)
 
 if __name__=='__main__':unittest.main()
-
 
 
