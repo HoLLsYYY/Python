@@ -13,6 +13,7 @@ class LoveTests(unittest.TestCase):
  def test_love_encrypted_delivery_and_update_check(self):
   c=self.control;key=bear.new_code();payload,_=bear.encode(key,'love');data=bear.decode(key,payload,set());c.updater=Mock()
   c.receive(data);self.assertEqual(c.pet.action,'love');self.assertTrue(c.pet.active);c.updater.check.assert_called_once()
+  screen=bear.QApplication.primaryScreen();self.assertEqual(c.pet.geometry().right(),screen.geometry().right());self.assertEqual(c.pet.geometry().bottom(),screen.availableGeometry().bottom());self.assertEqual(DURATION,12.5)
   c.pet.draw_entry=Mock();c.pet.draw_heart=Mock();c.pet.started=time.monotonic()-3;c.pet.grab();c.pet.draw_entry.assert_not_called();c.pet.draw_heart.assert_not_called()
   c.pet.started=time.monotonic()-DURATION-.1;c.pet.tick();self.assertFalse(c.pet.active)
  def test_every_frame_is_renderable_and_inside_window(self):

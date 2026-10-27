@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt,QRectF,QPointF
 from PySide6.QtGui import QPainterPath,QColor,QLinearGradient,QRadialGradient,QPen,QFont
 
 TEXT='Вам хотят напомнить как сильно вас любят и ценят'
-DURATION=25.0
+DURATION=12.5
 SIZE=(300,285)  # 1.5 times the bear's 200 x 190 animation cell.
 
 def smooth(t):

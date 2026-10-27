@@ -189,7 +189,7 @@ class Pet(QWidget):
         if self.action=='bouquet':
             self.setFixedSize(g.width(),a.bottom()-g.top()+1);self.move(g.left(),g.top())
         elif self.action=='love':
-            self.setFixedSize(340,335);self.move(a.center().x()-170,a.center().y()-167)
+            self.setFixedSize(340,335);self.move(g.right()-self.width()+1,a.bottom()-self.height()+1)
         else:
             self.setFixedSize(300,265)
             self.move(g.left() if self.side=='left' else g.right()-self.width()+1,a.bottom()-self.height()+1)
